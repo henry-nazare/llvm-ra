@@ -32,6 +32,7 @@ bool RegionAnalysis::runOnModule(Module& M) {
   SEG.solve();
 
   G = std::unique_ptr<RAGraphBase>(new RAGraphBase(&M, &CG, &DL, &SEG, &SNV));
+  G->initialize();
 
   return false;
 }

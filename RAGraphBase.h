@@ -21,13 +21,19 @@ class RAGraphBase : public SAGEAnalysisGraph {
 public:
   RAGraphBase(
       const Module *M, const CallGraph *CG, const DataLayout *DL,
-      const SAGEExprGraph *SEG, SAGENameVault *SNV);
+      SAGEExprGraph *SEG, SAGENameVault *SNV);
+
+  void initialize();
 
 private:
+  void initializeFunction(Function *F);
+
+  PyObject *getGenerator(PyObject *Obj, PyObject *Expr) const;
+
   const Module *M;
   const CallGraph *CG;
   const DataLayout *DL;
-  const SAGEExprGraph *SEG;
+  SAGEExprGraph *SEG;
   SAGENameVault *SNV;
 };
 

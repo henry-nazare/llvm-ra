@@ -1,4 +1,18 @@
 //===------------------------- RegionAnalysis.cpp -------------------------===//
+/// This region analysis infers array sizes for pointers throughout the program.
+/// For example, in the following:
+///
+/// int *f(int N) {
+///   return malloc(N * sizeof(int)).
+/// }
+/// int *p = f(M + 1);
+///
+/// We derive the symbolic size N * 4 as the return value of f and size
+/// (M + 1) * 4 as the size of the pointer variable p.
+/// When indexing, we simply subract the offset, so &p[1] would have size M * 4.
+///
+/// The iteration logic is all done in a separate Python module, we simply
+/// define the node types in Runtime/llvmra.
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "ra"

@@ -165,8 +165,7 @@ void RAGraphBase::addPtrInst(const Function *F, const Instruction *I) {
   }
 
   if (isa<const BitCastInst>(I)) {
-    addIncoming(I->getOperand(0), I);
-    return;
+    return (void) addIncoming(I->getOperand(0), I);
   }
 
   setNode(I, getGenerator(getNodeName(I), SAGEExpr::GetMinusInf().get()));

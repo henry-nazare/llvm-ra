@@ -84,3 +84,4 @@ class RAGraph(Graph):
     node = ReplacerNode(name, repl)
     self.add_node(node)
     return node
+

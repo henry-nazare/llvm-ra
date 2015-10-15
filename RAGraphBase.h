@@ -6,6 +6,11 @@
 
 #include "SAGE/SAGEAnalysisGraph.h"
 
+#include "llvm/ADT/DenseMap.h"
+
+#include <list>
+#include <map>
+
 namespace llvm {
 
 class Module;
@@ -26,20 +31,20 @@ public:
 
   void initialize();
 
-  SAGEExpr getSize(Value *V);
+  SAGEExpr getSize(const Value *V);
 
 private:
-  PyObject *getNode(Value *V) override;
-  PyObject *getNodeName(Value *V) const override;
+  PyObject *getNode(const Value *V) override;
+  PyObject *getNodeName(const Value *V) const override;
 
-  void initializeFunction(Function *F);
-  void initializePtrInsts(Function *F);
+  void initializeFunction(const Function *F);
+  void initializePtrInsts(const Function *F);
 
-  void addPtrInst(Function *F, Instruction *I);
-  void addAllocaInst(AllocaInst *AI);
-  void addCallInst(CallInst *CI);
-  void addReturnInst(ReturnInst *RI, Function *F);
-  void addGEPInst(GetElementPtrInst *GEP);
+  void addPtrInst(const Function *F, const Instruction *I);
+  void addAllocaInst(const AllocaInst *AI);
+  void addCallInst(const CallInst *CI);
+  void addReturnInst(const ReturnInst *RI, const Function *F);
+  void addGEPInst(const GetElementPtrInst *GEP);
 
   PyObject *getGenerator(PyObject *Obj, PyObject *Expr) const;
   PyObject
@@ -52,7 +57,7 @@ private:
   SAGEExprGraph *SEG;
   SAGENameVault *SNV;
 
-  std::map<Instruction*, std::vector<Value*>> Incoming;
+  DenseMap<const Instruction*, std::list<const Value*>> Incoming;
 };
 
 #endif

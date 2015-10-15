@@ -40,7 +40,7 @@ static auto IsMallocLike = [](const FunctionType *FT, LLVMContext &Context) {
 };
 
 static auto GetMallocLikeSize =
-    [](Function *F, SAGEExprGraph *SEG) -> const SAGEExpr {
+    [](const Function *F, SAGEExprGraph *SEG) -> const SAGEExpr {
   return SEG->getExpr(&*F->arg_begin());
 };
 
@@ -48,7 +48,7 @@ typedef
     std::function<bool (const FunctionType*, LLVMContext&)>
     FunctionVerifyFn;
 typedef
-    std::function<const SAGEExpr (Function*, SAGEExprGraph*)>
+    std::function<const SAGEExpr (const Function*, SAGEExprGraph*)>
     FunctionGetSizeFn;
 typedef std::pair<FunctionVerifyFn, FunctionGetSizeFn> FunctionFnPair;
 
@@ -56,13 +56,12 @@ std::unordered_map<std::string, FunctionFnPair> AllocationFns = {
   {"malloc", std::make_pair(IsMallocLike, GetMallocLikeSize)},
 };
 
-SAGEExpr RAGraphBase::getSize(Value *V) {
+SAGEExpr RAGraphBase::getSize(const Value *V) {
   static PythonAttrInfo graph_Node_state("state");
-  PyObject *Node = getNode(V);
-  return graph_Node_state.get(Node);
+  return graph_Node_state.get(getNode(V));
 }
 
-PyObject *RAGraphBase::getNode(Value *V) {
+PyObject *RAGraphBase::getNode(const Value *V) {
   assert((V->getType()->isPointerTy() || isa<ReturnInst>(V))
       && "Value is not a pointer");
 
@@ -76,27 +75,27 @@ PyObject *RAGraphBase::getNode(Value *V) {
   return Gen;
 }
 
-PyObject *RAGraphBase::getNodeName(Value *V) const {
+PyObject *RAGraphBase::getNodeName(const Value *V) const {
   return Get(SNV->getName(V));
 }
 
 void RAGraphBase::initialize() {
   ReversePostOrderTraversal<const CallGraph*> RPOT(CG);
-  std::stack<Function*> Stack;
-  for (auto &N : make_range(RPOT.begin(), RPOT.end())) {
-    if (Function *F = N->getFunction()) {
+  std::stack<const Function*> Stack;
+  for (auto &N : RPOT) {
+    if (const Function *F = N->getFunction()) {
       Stack.push(F);
     }
   }
 
   while (!Stack.empty()) {
-    Function *F = Stack.top();
+    auto F = Stack.top();
     Stack.pop();
     initializeFunction(F);
   }
 }
 
-void RAGraphBase::initializeFunction(Function *F) {
+void RAGraphBase::initializeFunction(const Function *F) {
   DEBUG(dbgs() << "RA: initializeFunction: " << F->getName() << "\n");
   if (F->isDeclaration()) {
     auto It = AllocationFns.find(F->getName());
@@ -123,8 +122,8 @@ void RAGraphBase::initializeFunction(Function *F) {
   initializePtrInsts(F);
 }
 
-void RAGraphBase::initializePtrInsts(Function *F) {
-  ReversePostOrderTraversal<Function*> RPOT(F);
+void RAGraphBase::initializePtrInsts(const Function *F) {
+  ReversePostOrderTraversal<const Function*> RPOT(F);
   for (auto &BB : RPOT) {
     for (auto &I : *BB) {
       if (I.getType()->isPointerTy() || isa<ReturnInst>(&I)) {
@@ -140,32 +139,32 @@ void RAGraphBase::initializePtrInsts(Function *F) {
   }
 }
 
-void RAGraphBase::addPtrInst(Function *F, Instruction *I) {
-  if (CallInst *CI = dyn_cast<CallInst>(I)) {
+void RAGraphBase::addPtrInst(const Function *F, const Instruction *I) {
+  if (auto CI = dyn_cast<const CallInst>(I)) {
     if (CI->getType()->isPointerTy()) {
       return (void) addCallInst(CI);
     }
   }
 
-  if (AllocaInst *AI = dyn_cast<AllocaInst>(I)) {
+  if (auto AI = dyn_cast<const AllocaInst>(I)) {
     if (AI->isStaticAlloca()) {
       return (void) addAllocaInst(AI);
     }
   }
 
-  if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(I)) {
+  if (auto GEP = dyn_cast<const GetElementPtrInst>(I)) {
     if (GEP->getNumIndices() == 1) {
       return (void) addGEPInst(GEP);
     }
   }
 
   if (F->getFunctionType()->getReturnType()->isPointerTy()) {
-    if (ReturnInst *RI = dyn_cast<ReturnInst>(I)) {
+    if (auto RI = dyn_cast<const ReturnInst>(I)) {
       return (void) addReturnInst(RI, F);
     }
   }
 
-  if (isa<BitCastInst>(I)) {
+  if (isa<const BitCastInst>(I)) {
     addIncoming(I->getOperand(0), I);
     return;
   }
@@ -173,14 +172,14 @@ void RAGraphBase::addPtrInst(Function *F, Instruction *I) {
   setNode(I, getGenerator(getNodeName(I), SAGEExpr::GetMinusInf().get()));
 }
 
-void RAGraphBase::addAllocaInst(AllocaInst *AI) {
+void RAGraphBase::addAllocaInst(const AllocaInst *AI) {
   auto TypeSize = DL->getTypeSizeInBits(AI->getType()->getContainedType(0))/8;
   auto Size = SAGEExpr(TypeSize);
   auto Gen = getGenerator(getNodeName(AI), Size.get());
   setNode(AI, Gen);
 }
 
-void RAGraphBase::addCallInst(CallInst *CI) {
+void RAGraphBase::addCallInst(const CallInst *CI) {
   Function *F = CI->getCalledFunction();
   if (!F) {
     return;
@@ -194,11 +193,12 @@ void RAGraphBase::addCallInst(CallInst *CI) {
     }
     ++Idx;
   }
+
   setNode(CI, getReplacer(getNodeName(CI), Dict));
   Incoming[CI] = {F};
 }
 
-void RAGraphBase::addGEPInst(GetElementPtrInst *GEP) {
+void RAGraphBase::addGEPInst(const GetElementPtrInst *GEP) {
   auto Index = SEG->getExpr(GEP->getOperand(1));
   auto TypeSize = DL->getTypeSizeInBits(GEP->getType()->getContainedType(0))/8;
   auto Size = SAGEExpr(TypeSize);
@@ -206,7 +206,7 @@ void RAGraphBase::addGEPInst(GetElementPtrInst *GEP) {
   addIncoming(GEP->getPointerOperand(), GEP);
 }
 
-void RAGraphBase::addReturnInst(ReturnInst *RI, Function *F) {
+void RAGraphBase::addReturnInst(const ReturnInst *RI, const Function *F) {
   addIncoming(RI->getOperand(0), RI);
   addIncoming(RI, F);
 }

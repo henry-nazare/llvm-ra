@@ -2,11 +2,13 @@
 
 #include "RAGraphBase.h"
 
+#include "SAGE/SAGEExpr.h"
 #include "SAGE/SAGEExprGraph.h"
 #include "SAGE/SAGENameVault.h"
 
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/Analysis/CallGraph.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 
@@ -15,6 +17,7 @@
 #include <unordered_map>
 
 using namespace llvm;
+using llvmpy::Get;
 
 struct SRAGraphObjInfo : public PythonObjInfo {
   SRAGraphObjInfo(const char *Fn)
@@ -53,6 +56,30 @@ std::unordered_map<std::string, FunctionFnPair> AllocationFns = {
   {"malloc", std::make_pair(IsMallocLike, GetMallocLikeSize)},
 };
 
+SAGEExpr RAGraphBase::getSize(Value *V) {
+  static PythonAttrInfo graph_Node_state("state");
+  PyObject *Node = getNode(V);
+  return graph_Node_state.get(Node);
+}
+
+PyObject *RAGraphBase::getNode(Value *V) {
+  assert((V->getType()->isPointerTy() || isa<ReturnInst>(V))
+      && "Value is not a pointer");
+
+  auto It = Node_.find(V);
+  if (It != Node_.end()) {
+    return It->second;
+  }
+
+  auto Gen = getGenerator(getNodeName(V), SAGEExpr::GetMinusInf().get());
+  setNode(V, Gen);
+  return Gen;
+}
+
+PyObject *RAGraphBase::getNodeName(Value *V) const {
+  return Get(SNV->getName(V));
+}
+
 void RAGraphBase::initialize() {
   ReversePostOrderTraversal<const CallGraph*> RPOT(CG);
   std::stack<Function*> Stack;
@@ -61,6 +88,7 @@ void RAGraphBase::initialize() {
       Stack.push(F);
     }
   }
+
   while (!Stack.empty()) {
     Function *F = Stack.top();
     Stack.pop();
@@ -86,12 +114,117 @@ void RAGraphBase::initializeFunction(Function *F) {
   }
 
   if (F->isIntrinsic() || F->isDeclaration()) {
-    // TODO.
+    if (F->getFunctionType()->getReturnType()->isPointerTy()) {
+      setNode(F, getGenerator(getNodeName(F), SAGEExpr::GetMinusInf().get()));
+    }
+    return;
   }
+
+  initializePtrInsts(F);
+}
+
+void RAGraphBase::initializePtrInsts(Function *F) {
+  ReversePostOrderTraversal<Function*> RPOT(F);
+  for (auto &BB : RPOT) {
+    for (auto &I : *BB) {
+      if (I.getType()->isPointerTy() || isa<ReturnInst>(&I)) {
+        addPtrInst(F, &I);
+      }
+    }
+  }
+
+  for (auto &P : Incoming) {
+    for (auto &V : P.second) {
+      addIncoming(V, P.first);
+    }
+  }
+}
+
+void RAGraphBase::addPtrInst(Function *F, Instruction *I) {
+  if (CallInst *CI = dyn_cast<CallInst>(I)) {
+    if (CI->getType()->isPointerTy()) {
+      return (void) addCallInst(CI);
+    }
+  }
+
+  if (AllocaInst *AI = dyn_cast<AllocaInst>(I)) {
+    if (AI->isStaticAlloca()) {
+      return (void) addAllocaInst(AI);
+    }
+  }
+
+  if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(I)) {
+    if (GEP->getNumIndices() == 1) {
+      return (void) addGEPInst(GEP);
+    }
+  }
+
+  if (F->getFunctionType()->getReturnType()->isPointerTy()) {
+    if (ReturnInst *RI = dyn_cast<ReturnInst>(I)) {
+      return (void) addReturnInst(RI, F);
+    }
+  }
+
+  if (isa<BitCastInst>(I)) {
+    addIncoming(I->getOperand(0), I);
+    return;
+  }
+
+  setNode(I, getGenerator(getNodeName(I), SAGEExpr::GetMinusInf().get()));
+}
+
+void RAGraphBase::addAllocaInst(AllocaInst *AI) {
+  auto TypeSize = DL->getTypeSizeInBits(AI->getType()->getContainedType(0))/8;
+  auto Size = SAGEExpr(TypeSize);
+  auto Gen = getGenerator(getNodeName(AI), Size.get());
+  setNode(AI, Gen);
+}
+
+void RAGraphBase::addCallInst(CallInst *CI) {
+  Function *F = CI->getCalledFunction();
+  if (!F) {
+    return;
+  }
+
+  std::map<PyObject*, PyObject*> Dict;
+  unsigned Idx = 0;
+  for (auto &A : F->args()) {
+    if (A.getType()->isIntegerTy()) {
+      Dict[SEG->getExpr(&A).get()] = SEG->getExpr(CI->getArgOperand(Idx)).get();
+    }
+    ++Idx;
+  }
+  setNode(CI, getReplacer(getNodeName(CI), Dict));
+  Incoming[CI] = {F};
+}
+
+void RAGraphBase::addGEPInst(GetElementPtrInst *GEP) {
+  auto Index = SEG->getExpr(GEP->getOperand(1));
+  auto TypeSize = DL->getTypeSizeInBits(GEP->getType()->getContainedType(0))/8;
+  auto Size = SAGEExpr(TypeSize);
+  setNode(GEP, getIndex(getNodeName(GEP), Index.get(), Size.get()));
+  addIncoming(GEP->getPointerOperand(), GEP);
+}
+
+void RAGraphBase::addReturnInst(ReturnInst *RI, Function *F) {
+  addIncoming(RI->getOperand(0), RI);
+  addIncoming(RI, F);
 }
 
 PyObject *RAGraphBase::getGenerator(PyObject *Obj, PyObject *Expr) const {
   static SRAGraphObjInfo graph_SRAGraph_get_generator("get_generator");
   return graph_SRAGraph_get_generator({get(), Obj, Expr});
+}
+
+PyObject *RAGraphBase::getReplacer(
+    PyObject *Obj, std::map<PyObject*, PyObject*> Dict) const {
+  static SRAGraphObjInfo graph_SRAGraph_get_replacer("get_replacer");
+  return graph_SRAGraph_get_replacer({get(), Obj, llvmpy::MakeDict(Dict)});
+}
+
+PyObject *RAGraphBase::
+    getIndex(PyObject *Obj, PyObject *Expr, PyObject *Size) const {
+  static SRAGraphObjInfo graph_SRAGraph_get_index("get_indexation");
+  return graph_SRAGraph_get_index({get(), Obj, Expr, Size});
 }
 

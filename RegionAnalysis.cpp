@@ -33,8 +33,13 @@ bool RegionAnalysis::runOnModule(Module& M) {
 
   G = std::unique_ptr<RAGraphBase>(new RAGraphBase(&M, &CG, &DL, &SEG, &SNV));
   G->initialize();
+  G->solve();
 
   return false;
+}
+
+SAGEExpr RegionAnalysis::getSize(Value *V) {
+  return G->getSize(V);
 }
 
 void RegionAnalysis::print(raw_ostream &OS, const Module*) const {

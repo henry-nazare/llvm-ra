@@ -9,18 +9,18 @@
 #include "llvm/Pass.h"
 
 class RAGraphBase;
+class SAGEExpr;
 class SAGENameVault;
-class SAGERange;
 
 class RegionAnalysis : public ModulePass {
 public:
   static char ID;
-  RegionAnalysis() : ModulePass(ID) { }
+  RegionAnalysis() : ModulePass(ID) {}
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-  virtual bool runOnModule(Module&);
+  void getAnalysisUsage(AnalysisUsage &AU) const;
+  bool runOnModule(Module&);
 
-  SAGERange getRange(Value *V);
+  SAGEExpr getSize(Value *V);
 
   virtual void print(raw_ostream &OS, const Module*) const;
 

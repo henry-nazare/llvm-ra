@@ -1,6 +1,8 @@
 from llvmanalysis.graph import Graph, Node
 from llvmsage.expr import Expr
 
+import operator
+
 bottom_expr = Expr.get_minus_inf()
 debug_flag = False
 
@@ -37,6 +39,28 @@ class GeneratorNode(RaNode):
     debug("op (generator):", self)
     return self.expr
 
+class ReplacerNode(RaNode):
+  def __init__(self, name, repl, **kwargs):
+    RaNode.__init__(self, name, **kwargs)
+    self.is_instanced = True
+    self.repl = repl
+
+  def op(self, incoming):
+    debug("op (replace):", self, incoming)
+    print "repl:", self.repl
+    for key, value in self.repl.iteritems():
+      state = state.subs(key, value)
+    return state
+
+class IndexNode(RaNode):
+  def __init__(self, name, expr, **kwargs):
+    RaNode.__init__(self, name, **kwargs)
+    self.expr = expr
+
+  def op(self, incoming):
+    debug("op (index):", self, incoming)
+    return incoming - self.expr
+
 class RAGraph(Graph):
   def __init__(self):
     Graph.__init__(self)
@@ -46,3 +70,17 @@ class RAGraph(Graph):
     self.add_node(node)
     return node
 
+  def get_indexation(self, name, expr, size):
+    node = IndexNode(name, expr * size)
+    self.add_node(node)
+    return node
+
+  def get_id(self, name):
+    node = PhiNode(name)
+    self.add_node(node)
+    return node
+
+  def get_replacer(self, name, repl):
+    node = ReplacerNode(name, repl)
+    self.add_node(node)
+    return node

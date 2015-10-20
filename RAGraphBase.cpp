@@ -123,6 +123,8 @@ void RAGraphBase::initializeFunction(const Function *F) {
 }
 
 void RAGraphBase::initializePtrInsts(const Function *F) {
+  Incoming.clear();
+
   ReversePostOrderTraversal<const Function*> RPOT(F);
   for (auto &BB : RPOT) {
     for (auto &I : *BB) {

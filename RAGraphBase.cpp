@@ -109,7 +109,7 @@ void RAGraphBase::initializeFunction(const Function *F) {
     }
 
     auto Size = FnPair.second(F, SEG);
-    return (void) setNode(F, getGenerator(getNodeName(F), Size.get()));
+    return (void) setNode(F, getNoAliasGenerator(getNodeName(F), Size.get()));
   }
 
   if (F->isIntrinsic() || F->isDeclaration()) {
@@ -208,13 +208,25 @@ void RAGraphBase::addGEPInst(const GetElementPtrInst *GEP) {
 }
 
 void RAGraphBase::addReturnInst(const ReturnInst *RI, const Function *F) {
+  setNode(RI, getId(getNodeName(RI)));
   addIncoming(RI->getOperand(0), RI);
+  setNode(F, getId(getNodeName(F)));
   addIncoming(RI, F);
 }
 
 PyObject *RAGraphBase::getGenerator(PyObject *Obj, PyObject *Expr) const {
   static SRAGraphObjInfo graph_SRAGraph_get_generator("get_generator");
   return graph_SRAGraph_get_generator({get(), Obj, Expr});
+}
+
+PyObject *RAGraphBase::getNoAliasGenerator(PyObject *Obj, PyObject *Expr) const {
+  static SRAGraphObjInfo graph_SRAGraph_get_generator("get_noalias_generator");
+  return graph_SRAGraph_get_generator({get(), Obj, Expr});
+}
+
+PyObject *RAGraphBase::getId(PyObject *Obj) const {
+  static SRAGraphObjInfo graph_SRAGraph_get_generator("get_id");
+  return graph_SRAGraph_get_generator({get(), Obj});
 }
 
 PyObject *RAGraphBase::getReplacer(

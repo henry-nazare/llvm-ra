@@ -47,6 +47,8 @@ private:
   void addGEPInst(const GetElementPtrInst *GEP);
 
   PyObject *getGenerator(PyObject *Obj, PyObject *Expr) const;
+  PyObject *getNoAliasGenerator(PyObject *Obj, PyObject *Expr) const;
+  PyObject *getId(PyObject *Obj) const;
   PyObject
       *getReplacer(PyObject *Obj, std::map<PyObject*, PyObject*> Dict) const;
   PyObject *getIndex(PyObject *Obj, PyObject *Expr, PyObject *Size) const;

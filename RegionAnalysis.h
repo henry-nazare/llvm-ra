@@ -21,6 +21,7 @@ public:
   bool runOnModule(Module&);
 
   SAGEExpr getSize(Value *V);
+  std::pair<bool, unsigned> getMemId(const Value *V);
 
   virtual void print(raw_ostream &OS, const Module*) const;
 

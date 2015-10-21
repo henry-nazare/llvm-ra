@@ -61,6 +61,12 @@ SAGEExpr RAGraphBase::getSize(const Value *V) {
   return graph_Node_state.get(getNode(V));
 }
 
+unsigned RAGraphBase::getMemId(const Value *V) {
+  static PythonAttrInfo attr_state("state");
+  static PythonAttrInfo attr_memid("memid");
+  return PyInt_AsLong(attr_memid.get(attr_state.get(getNode(V))));
+}
+
 PyObject *RAGraphBase::getNode(const Value *V) {
   assert((V->getType()->isPointerTy() || isa<ReturnInst>(V))
       && "Value is not a pointer");
@@ -152,6 +158,10 @@ void RAGraphBase::addPtrInst(const Function *F, const Instruction *I) {
     if (AI->isStaticAlloca()) {
       return (void) addAllocaInst(AI);
     }
+  }
+
+  if (auto CI = dyn_cast<const CastInst>(I)) {
+    setNode(CI, getId(getNodeName(CI)));
   }
 
   if (auto GEP = dyn_cast<const GetElementPtrInst>(I)) {

@@ -32,6 +32,7 @@ public:
   void initialize();
 
   SAGEExpr getSize(const Value *V);
+  unsigned getMemId(const Value *V);
 
 private:
   PyObject *getNode(const Value *V) override;

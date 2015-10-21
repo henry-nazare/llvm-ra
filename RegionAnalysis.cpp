@@ -56,6 +56,11 @@ SAGEExpr RegionAnalysis::getSize(Value *V) {
   return G->getSize(V);
 }
 
+std::pair<bool, unsigned> RegionAnalysis::getMemId(const Value *V) {
+  unsigned Id = G->getMemId(V);
+  return std::make_pair(Id != 0, Id);
+}
+
 void RegionAnalysis::print(raw_ostream &OS, const Module*) const {
   OS << *G << "\n";
 }
